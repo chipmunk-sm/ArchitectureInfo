@@ -11,6 +11,25 @@
 #include <iostream>
 #include <fstream>
 #include <vector>
+#include <io.h>
+#include <fcntl.h>
+#include <algorithm>
+
+#define COLOR_ERROR     12
+#define COLOR_DEFAULT   7
+#define COLOR_ANYCPU    15
+#define COLOR_X86       14
+#define COLOR_X64       10
+#define COLOR_ROM       11
+#define COLOR_UNKNOWN   8
+
+void setErrorColor(WORD color) {
+    SetConsoleTextAttribute(GetStdHandle(STD_ERROR_HANDLE), color);
+}
+
+void setConsoleColor(WORD color) {
+    SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
+}
 
 enum class ComponentInfo {
     UNKNOWN,
@@ -19,14 +38,6 @@ enum class ComponentInfo {
     x64,
     rom
 };
-
-int64_t GetFileSize(std::wstring path){
-    struct __stat64 flstat;
-    auto retcode = _wstat64( path.c_str(), &flstat);
-    if (retcode == 0)
-        return static_cast<int64_t>(flstat.st_size);
-    return 0;
-}
 
 int64_t rva_to_offset(const IMAGE_SECTION_HEADER *sections, int num_sections, DWORD rva)
 {
@@ -38,7 +49,7 @@ int64_t rva_to_offset(const IMAGE_SECTION_HEADER *sections, int num_sections, DW
     return 0;
 }
 
-ComponentInfo GetArchitectureInfo(const std::wstring &path) {
+ComponentInfo GetArchitectureInfo(const std::filesystem::path & path) {
 
     std::ifstream input(path, std::ios::binary );
     if (!input)
@@ -113,62 +124,81 @@ ComponentInfo GetArchitectureInfo(const std::wstring &path) {
     return ComponentInfo::X86;
 }
 
-int wmain(int argc, wchar_t *argv[])
+void PrintFileInfo(const std::filesystem::path & fspath)
 {
 
-    HANDLE hStdConsole = GetStdHandle(STD_OUTPUT_HANDLE);
+    std::wstring sResult;
+    switch (GetArchitectureInfo(fspath))
+    {
+    case ComponentInfo::ANYCPU: sResult = L"AnyCpu";  setConsoleColor(COLOR_ANYCPU);  break;
+    case ComponentInfo::X86:    sResult = L"x86";     setConsoleColor(COLOR_X86);     break;
+    case ComponentInfo::x64:    sResult = L"x64";     setConsoleColor(COLOR_X64);     break;
+    case ComponentInfo::rom:    sResult = L"rom";     setConsoleColor(COLOR_ROM);     break;
+    case ComponentInfo::UNKNOWN:
+    default:                    sResult = L"Unknown"; setConsoleColor(COLOR_UNKNOWN); break;
+    }
+    std::wcout << fspath.filename() << L" [" << sResult << L"]" << std::endl;
+    setConsoleColor(COLOR_DEFAULT);
+}
 
-    std::wstring path;
+int wmain(int argc, wchar_t *argv[])
+{
+    /* 
+    for(WORD ind = 1; ind < 255; ind++) {
+        SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), ind);
+        std::cout << ind << " test console color  " << std::endl;
+    }
+    */
+    _setmode(_fileno(stdout), _O_U16TEXT);
+    _setmode(_fileno(stderr), _O_U16TEXT);
+
+    std::filesystem::path path;
 
     if (argc > 2) {
-        std::wcerr << "Usage: " << argv[0] << " \"path to folder\"" << std::endl;
+        setErrorColor(COLOR_ERROR);
+        std::wcerr << L"Usage: " << argv[0] << L" \"path to folder or file\"" << std::endl;
+        setErrorColor(COLOR_DEFAULT);
         return 1;
     } else if(argc == 2) {
         path = argv[1];
-    } else{
-        wchar_t currentPath[MAX_PATH + 2] = {};
-        GetCurrentDirectoryW(MAX_PATH, currentPath);
-        path = currentPath;
+    } else {
+        path = std::filesystem::current_path();
     }
 
-    //for(int ind = 1; ind < 255; ind++) {
-    //    SetConsoleTextAttribute(hConsole, ind);
-    //    std::wcout << ind << " test console color  " << std::endl;
-    //}
-    try {
+    if (std::filesystem::is_regular_file(path)) {
+        PrintFileInfo(path);
+        return 2;
+    }
 
+    if (!std::filesystem::is_directory(path))
+    {
+        setErrorColor(COLOR_ERROR);
+        std::wcerr << L"Error: The path is not file or directory, or access denied!\n[" << path << L"]" << std::endl;
+        setErrorColor(COLOR_DEFAULT);
+        return 3;
+    }
+
+    try {
         if (std::filesystem::exists(path)) {
             for (const auto & fd : std::filesystem::directory_iterator(path)) {
-
                 std::wstring itemExtension = fd.path().extension();
                 std::transform(itemExtension.begin(), itemExtension.end(), itemExtension.begin(), ::tolower);
                 if(!(itemExtension == L".dll" || itemExtension == L".exe"))
                     continue;
-
-                std::wstring itemPath = fd.path();
-                //auto size = GetFileSize(itemPath);
-
-                std::wstring sResult;
-                auto result = GetArchitectureInfo(itemPath);
-                switch (result) {
-                case ComponentInfo::ANYCPU: sResult = L"AnyCpu"; SetConsoleTextAttribute(hStdConsole, 31); break;
-                case ComponentInfo::X86: sResult = L"x86"; SetConsoleTextAttribute(hStdConsole, 30); break;
-                case ComponentInfo::x64: sResult = L"x64"; SetConsoleTextAttribute(hStdConsole, 26); break;
-                case ComponentInfo::rom: sResult = L"rom"; SetConsoleTextAttribute(hStdConsole, 27); break;
-                case ComponentInfo::UNKNOWN:
-                default:  sResult = L"Unknown"; SetConsoleTextAttribute(hStdConsole, 24); break;
-                }
-                std::wcout << fd.path().filename().wstring() << L" [" << sResult << L"]" << std::endl;
+                PrintFileInfo(fd.path());
             }
         }
+    } catch (const std::exception& ex) {
+        setErrorColor(COLOR_ERROR);
+        std::wcerr << L"Error: " << ex.what() << std::endl;
+        setErrorColor(COLOR_DEFAULT);
+        return 4;
     } catch (...) {
-        SetConsoleTextAttribute(hStdConsole, 28);
-        std::wcerr << "Unexpected exception" << std::endl;
-        SetConsoleTextAttribute(hStdConsole, 7);
-        return -1;
+        setErrorColor(COLOR_ERROR);
+        std::wcerr << L"Unexpected exception" << std::endl;
+        setErrorColor(COLOR_DEFAULT);
+        return 5;
     }
-
-    SetConsoleTextAttribute(hStdConsole, 7);
 
     return 0;
 }
