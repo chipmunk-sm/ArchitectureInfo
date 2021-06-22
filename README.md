@@ -5,7 +5,7 @@
 Operating System: Windows
 
 ```
-Usage: architectureinfo.exe "path to folder"
+Usage: architectureinfo.exe "path to folder or file"
 ```
 
 Download the latest version from github: https://github.com/chipmunk-sm/ArchitectureInfo/releases
