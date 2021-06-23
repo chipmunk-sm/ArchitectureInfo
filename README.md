@@ -10,6 +10,9 @@ Usage: architectureinfo.exe "path to folder or file"
 
 Download the latest version from github: https://github.com/chipmunk-sm/ArchitectureInfo/releases
 
+```
+* Prevent the Command Prompt from Closing Automatically: Launch the command prompt by typing cmd /K
+```
 
 [![CMake](https://github.com/chipmunk-sm/ArchitectureInfo/actions/workflows/build.yml/badge.svg)](https://github.com/chipmunk-sm/ArchitectureInfo/actions/workflows/build.yml)
 
